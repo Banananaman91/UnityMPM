@@ -1,4 +1,9 @@
-﻿using System;
+﻿/*
+ * Source code credit goes to Nialltl on Github: https://github.com/nialltl/incremental_mpm
+ * Their implementation was used and adapted for the current version, using MLS_MPM_NeoHookean_Multithreaded
+ */
+
+using System;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
