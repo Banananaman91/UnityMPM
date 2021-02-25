@@ -232,11 +232,12 @@ MonoBehaviour:
   DT: 0.05
   DX: 1
   Gravity: -0.3
-  ElasticLambda: 100
-  ElasticMu: 0.01
+  ElasticLambda: 0.01
+  ElasticMu: 100
   _spawnCube: {fileID: 2652775751795438266, guid: a4f39104d89afae4f9dddd9ea33c2343,
     type: 3}
   _cube: {fileID: 107587878}
+  _cubeSpeed: 5
 --- !u!4 &581780719
 Transform:
   m_ObjectHideFlags: 0
@@ -288,6 +289,7 @@ MonoBehaviour:
   _spawnCube: {fileID: 2652775751795438266, guid: a4f39104d89afae4f9dddd9ea33c2343,
     type: 3}
   _cube: {fileID: 107587878}
+  _cubeSpeed: 0
 --- !u!4 &688290087
 Transform:
   m_ObjectHideFlags: 0
@@ -431,6 +433,7 @@ MonoBehaviour:
   _spawnCube: {fileID: 2652775751795438266, guid: a4f39104d89afae4f9dddd9ea33c2343,
     type: 3}
   _cube: {fileID: 107587878}
+  _cubeSpeed: 0
 --- !u!4 &737090813
 Transform:
   m_ObjectHideFlags: 0
@@ -646,6 +649,7 @@ MonoBehaviour:
   _spawnCube: {fileID: 2652775751795438266, guid: a4f39104d89afae4f9dddd9ea33c2343,
     type: 3}
   _cube: {fileID: 107587878}
+  _cubeSpeed: 0
 --- !u!4 &2110144201
 Transform:
   m_ObjectHideFlags: 0

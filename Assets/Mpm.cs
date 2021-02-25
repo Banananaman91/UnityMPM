@@ -62,6 +62,9 @@ public class Mpm : MonoBehaviour
 
     [SerializeField] private GameObject _spawnCube;
     [SerializeField] private GameObject _cube;
+    [SerializeField] private float _cubeSpeed;
+    private bool _begin;
+    private Vector3 _endPos;
 
     private List<GameObject> _cubes = new List<GameObject>();
 
@@ -82,7 +85,11 @@ public class Mpm : MonoBehaviour
         }
     }
 
-    private void Start(){
+    private void Start()
+    {
+        _endPos = new Vector3(GridRes / 2, GridRes / 4, 0);
+        _cube.transform.position = new Vector3(GridRes / 2, GridRes / 1.3f, 0);
+        
         // 1. initialise your grid - fill your grid array with (grid_res * grid_res) cells.
         
         _grid = new NativeArray<Cell>(NumCells, Allocator.Persistent);
@@ -117,7 +124,7 @@ public class Mpm : MonoBehaviour
             _particles[i] = p;
         }
         
-        var position = new float2(GridRes / 2, GridRes / 1.3f);
+        var position = new float2(GridRes / 2, GridRes);
         _particles[_numParticles - 1] = new Particle
         {
             Position = position,
@@ -209,9 +216,10 @@ public class Mpm : MonoBehaviour
 
     }
 
-    private void Update()
+    private void FixedUpdate()
     {
         //HandleMouseInteraction();
+        if (Input.GetKeyDown(KeyCode.Space)) _begin = true;
 
         for (int i = 0; i < Iterations; ++i)
         {
@@ -230,8 +238,10 @@ public class Mpm : MonoBehaviour
             var parPos = ps[i].Position;
             _cubes[i].transform.position = new Vector3(parPos.x, parPos.y, 0);
         }
-        
-        
+
+        if (!_begin) return;
+        var direction = _endPos - _cube.transform.position;
+        _cube.transform.position += direction * (DT * DX * _cubeSpeed);
         //_cube.transform.position = new Vector3(ps[ps.Length - 1].Position.x, ps[ps.Length - 1].Position.y);
     }
 
