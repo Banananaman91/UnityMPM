@@ -295,9 +295,9 @@ public class ThreeDimensionalMpm : MonoBehaviour
 
                 uint3 cellIdx = (uint3)p.Position;
                 float3 cellDiff = (p.Position - cellIdx) - 0.5f;
-                weights[0] = 0.5f * math.pow(0.5f - cellDiff, 2);
-                weights[1] = 0.75f - math.pow(cellDiff, 2);
-                weights[2] = 0.5f * math.pow(0.5f + cellDiff, 2);
+                weights[0] = 0.5f * math.pow(0.5f - cellDiff, 3);
+                weights[1] = 0.75f - math.pow(cellDiff, 3);
+                weights[2] = 0.5f * math.pow(0.5f + cellDiff, 3);
 
                 //2.3: for all neighbouring cells scatter our particle's momentum to the grid, using the cell's interpolation weight calculated in 2.1
                 for (uint gx = 0; gx < 3; ++gx)

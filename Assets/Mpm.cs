@@ -1,18 +1,11 @@
-﻿/*
- * Source code credit goes to Nialltl on Github: https://github.com/nialltl/incremental_mpm
- * Their implementation was used and adapted for the current version, using MLS_MPM_NeoHookean_Multithreaded
- */
-
-using System;
+﻿using System;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Profiling;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Unity.Burst;
 using Unity.Jobs;
-using UnityEngine.UI;
 
 public class Mpm : MonoBehaviour
 {
@@ -30,7 +23,7 @@ public class Mpm : MonoBehaviour
         public float Mass;
     }
 
-    private const int GridRes = 64;
+    private const int GridRes = 128;
     private const int NumCells = GridRes * GridRes;
     
     // batch size for the job system.
@@ -40,18 +33,20 @@ public class Mpm : MonoBehaviour
 
     //dt = the time step of the simulation. The stability of the simulation is going to be limited by how much a particle can move in a single time step
     //it's a good rule of thumb to choose dt so that no particle could move more than 1 grid-cell in a single step
-    private const float DT = 0.05f;
-    private const int Iterations = (int)(1.0f / DT);
-    private const float Gravity = -0.3f;
+    [SerializeField] private float DT = 0.005f;
+    [SerializeField] private float DX = 0.33f;
+    private int Iterations => (int)(1.0f / DT);
+    [SerializeField] private float Gravity = -0.5f;
     
     // Lamé parameters for stress-strain relationship
-    private const float ElasticLambda = 0.01f;
-    private const float ElasticMu = 100f;
+    [SerializeField] private float ElasticLambda = 0.0001f;
+    [SerializeField] private float ElasticMu = 200;
 
     private int _numParticles;
 
     private NativeArray<Particle> _particles;
     private NativeArray<Cell> _grid;
+    private NativeArray<Particle> _objectParticle;
     
 
     private float2[] _weights = new float2[3];
@@ -70,7 +65,7 @@ public class Mpm : MonoBehaviour
 
     private List<GameObject> _cubes = new List<GameObject>();
 
-    private void SimulationArea(int x, int y, int boxX = 8, int boxY = 8, int boxZ = 8)
+    private void SimulationArea(int x, int y, int boxX = 8, int boxY = 8)
     {
         const float spacing = 1.0f;
 
@@ -81,8 +76,8 @@ public class Mpm : MonoBehaviour
 
                 var pos = math.float2(x + i, y + j);
                 _tempPositions.Add(pos);
-                _cubes.Add(Instantiate(_spawnCube, new Vector3(pos.x, pos.y, 0), Quaternion.identity));
-
+                var go = Instantiate(_spawnCube, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
+                _cubes.Add(go);
             }
         }
     }
@@ -102,22 +97,38 @@ public class Mpm : MonoBehaviour
         // 2. create a bunch of particles. Set their positions somewhere in the simulation domain.
         
         _tempPositions = new List<float2>();
-        SimulationArea(GridRes / 2, GridRes / 2, 32, 32);
+        SimulationArea(GridRes / 2, GridRes / 4, GridRes / 2, GridRes / 2);
         
-        _numParticles = _tempPositions.Count;
+        _numParticles = _tempPositions.Count + 1;
 
         _particles = new NativeArray<Particle>(_numParticles, Allocator.Persistent);
 
-        for (int i = 0; i < _numParticles; ++i)
+        for (int i = 0; i < _numParticles - 1; ++i)
         {
-            Particle p = new Particle();
-            p.Position = _tempPositions[i];
-            p.Velocity = 0;
-            p.AffMomentMatrix = 0;
-            p.Mass = 1.0f;
-            p.fs = math.float2x2(1, 0, 0, 1); //initialise deformation gradient to the identity matrix, as they're in their undeformed state
+            var p = new Particle
+            {
+                Position = _tempPositions[i],
+                Velocity = 0,
+                AffMomentMatrix = 0,
+                Mass = 1.0f,
+                fs = math.float2x2(1, 0, 0, 1)
+            };
+            //initialise deformation gradient to the identity matrix, as they're in their undeformed state
             _particles[i] = p;
         }
+        
+        var position = new float2(GridRes / 2, GridRes / 1.3f);
+        _particles[_numParticles - 1] = new Particle
+        {
+            Position = position,
+            Velocity = 0,
+            AffMomentMatrix = 0,
+            Mass = 10.0f,
+            fs = math.float2x2(1, 0, 0, 1)
+        };
+        
+        //(float2) (Math.Sqrt(Math.Pow(position.x - GridRes / 2, 2) + Math.Pow(position.y - GridRes / 2, 2))) * DT
+        
 
         // 3. optionally precompute state variables e.g. particle initial volume, if your model calls for it
         // -- begin precomputation of particle volumes
@@ -178,16 +189,29 @@ public class Mpm : MonoBehaviour
         
         // -- end precomputation of particle volumes
         
+        // Create colliding particle with direction
+        // _objectParticle = new NativeArray<Particle>(1, Allocator.Persistent);
+        // var position = new float2(GridRes / 2, GridRes / 1.3f);
+        // _objectParticle[0] = new Particle
+        // {
+        //     Position = position,
+        //     Velocity = (float2) (Math.Sqrt(Math.Pow(position.x - GridRes / 2, 2) +
+        //                                    Math.Pow(position.y - GridRes / 2, 2))) * DT,
+        //     AffMomentMatrix = 0,
+        //     Mass = 1.0f,
+        //     fs = math.float2x2(1, 0, 0, 1)
+        // };
+
         //simulation render, replace to use the data elsewhere
         // _simRenderer = FindObjectOfType<SimRenderer>();
         // _simRenderer.Initialise(_numParticles, Marshal.SizeOf(new Particle()));
 
-        
+
     }
 
     private void Update()
     {
-        HandleMouseInteraction();
+        //HandleMouseInteraction();
 
         for (int i = 0; i < Iterations; ++i)
         {
@@ -201,11 +225,14 @@ public class Mpm : MonoBehaviour
     //Should check for a more performant way of handling this
     public void RenderFrame(NativeArray<Particle> ps) {
 
-        for (int i = 0; i < ps.Length; i++)
+        for (int i = 0; i < ps.Length - 1; i++)
         {
             var parPos = ps[i].Position;
             _cubes[i].transform.position = new Vector3(parPos.x, parPos.y, 0);
         }
+        
+        
+        //_cube.transform.position = new Vector3(ps[ps.Length - 1].Position.x, ps[ps.Length - 1].Position.y);
     }
 
     private void HandleMouseInteraction()
@@ -220,6 +247,17 @@ public class Mpm : MonoBehaviour
     }
 
     private void EachSimulationStep() {
+        // Profiler.BeginSample("Move Object");
+        // new ObjectMover()
+        // {
+        //     objParticles = _objectParticle,
+        //     DT = DT,
+        //     DX = DX,
+        //     Gravity = Gravity,
+        //     _particles = _particles
+        // }.Schedule().Complete();
+        // Profiler.EndSample();
+        
         // 1. reset grid completely
         Profiler.BeginSample("Clear Grid");
         new JobClearGrid()
@@ -235,7 +273,12 @@ public class Mpm : MonoBehaviour
         {
             ps = _particles,
             grid = _grid,
-            numParticles = _numParticles
+            numParticles = _numParticles,
+            ElasticLambda = ElasticLambda,
+            ElasticMu = ElasticMu,
+            DT = DT,
+            DX = DX
+            
         }.Schedule().Complete();
         Profiler.EndSample();
         
@@ -243,12 +286,13 @@ public class Mpm : MonoBehaviour
         Profiler.BeginSample("Update Grid");
         new JobUpdateGrid()
         {
-            grid = _grid
+            grid = _grid,
+            DT = DT,
+            Gravity = Gravity
         }.Schedule(NumCells, Division).Complete();
         Profiler.EndSample();
 
-        var position = _cube.transform.position;
-        var cubePos = math.float2(position.x, position.y);
+        var position = new float2(_cube.transform.position.x, _cube.transform.position.y);
 
         // 4. grid-to-particle
         // goal: report our grid's findings back to our particles, and integrate their position + velocity forward
@@ -259,9 +303,12 @@ public class Mpm : MonoBehaviour
             mouseDown = _mouseDown,
             mousePos = _mousePos,
             grid = _grid,
-            cube = cubePos
+            cube = position,
+            DT = DT,
+            //os = _objectParticle
         }.Schedule(_numParticles, Division).Complete();
         Profiler.EndSample();
+
     }
     
     #region Jobs
@@ -288,6 +335,10 @@ public class Mpm : MonoBehaviour
         public NativeArray<Cell> grid;
         [ReadOnly] public NativeArray<Particle> ps;
         [ReadOnly] public int numParticles;
+        public float ElasticLambda;
+        public float ElasticMu;
+        public float DT;
+        public float DX;
 
         public void Execute()
         {
@@ -324,7 +375,9 @@ public class Mpm : MonoBehaviour
                 // this term is used in MLS-MPM paper equation 16 with quadratic weights, Mp = (1/4) * (deltaX)^2
                 //in this simulation, deltaX = 1, because i scale the rendering of the domain rather than the domain itself
                 //we multiply by dt as part of the process of fusing the momentum and force update for MLS-MPM
-                var eq16term0 = -volume * 4 * stress * DT;
+                var Mp = 0.25f * math.pow(DX, 2);
+                Mp = math.pow(Mp, -1);
+                var eq16term0 = -volume * Mp * stress * DT;
                 
                 // 2.2: calculate weights for the 3x3 neighbouring cells surrounding the particle's position
                 // on the grid using an interpolation function
@@ -395,6 +448,8 @@ public class Mpm : MonoBehaviour
     struct JobUpdateGrid : IJobParallelFor
     {
         public NativeArray<Cell> grid;
+        public float DT;
+        public float Gravity;
 
         public void Execute(int index)
         {
@@ -417,13 +472,16 @@ public class Mpm : MonoBehaviour
         }
     }
 
+    [BurstCompile]
     unsafe struct JobGridToParticle : IJobParallelFor
     {
         public NativeArray<Particle> ps;
+        //public NativeArray<Particle> os;
         [ReadOnly] public NativeArray<Cell> grid;
         [ReadOnly] public bool mouseDown;
         [ReadOnly] public float2 mousePos;
         public float2 cube;
+        public float DT;
 
         public void Execute(int index)
         {
@@ -516,17 +574,76 @@ public class Mpm : MonoBehaviour
                 var force = math.normalize(cubeDist) * normFactor * 0.5f;
                 p.Velocity += force;
             }
-
+            
+            // boundaries
+            float2 x_n = p.Position + p.Velocity;
+            const float wall_min = 3;
+            float wall_max = (float)GridRes - 4;
+            if (x_n.x < wall_min) p.Velocity.x += wall_min - x_n.x;
+            if (x_n.x > wall_max) p.Velocity.x += wall_max - x_n.x;
+            if (x_n.y < wall_min) p.Velocity.y += wall_min - x_n.y;
+            if (x_n.y > wall_max) p.Velocity.y += wall_max - x_n.y;
 
             //deformation gradient update - MPM course, equation 181
             // Fp' = (I + dt * p.AffMomentMatrix) * Fp
-            var FpNew = math.float2x2(1, 0, 0, 1);
-            FpNew += DT * p.AffMomentMatrix;
-            p.fs = math.mul(FpNew, p.fs);
+            var fpNew = math.float2x2(1, 0, 0, 1);
+            fpNew += DT * p.AffMomentMatrix;
+            p.fs = math.mul(fpNew, p.fs);
 
             ps[index] = p;
         }
     }
+
+    // [BurstCompile]
+    // struct ObjectMover : IJob
+    // {
+    //     public NativeArray<Particle> objParticles;
+    //     public NativeArray<Particle> _particles;
+    //     public float DT;
+    //     public float DX;
+    //     public float Gravity;
+    //     public void Execute()
+    //     {
+    //         for (int i = 0; i < objParticles.Length; i++)
+    //         {
+    //             var o = objParticles[i];
+    //             //
+    //             // var Mp = 0.25f * math.pow(DX, 2);
+    //             // Mp = math.pow(Mp, -1);
+    //             // var force = float2.zero;
+    //             // for (int j = 0; j < _particles.Length; j++)
+    //             // {
+    //             //     var p = _particles[j];
+    //             //     var objectDist = p.Position - o.Position;
+    //             //     var objectRadius = 2f;
+    //             //     if (math.dot(objectDist, objectDist) < objectRadius * objectRadius)
+    //             //     {
+    //             //         var pVolume = -p.Mass * Mp * p.Velocity * DT;
+    //             //         var oVolume = -o.Mass * Mp * o.Velocity * DT;
+    //             //         var pForce = ((-p.Mass * pVolume) / objectDist) * DT;
+    //             //         var oForce = ((-o.Mass * oVolume) / objectDist) * DT;
+    //             //         force += pForce - oForce;
+    //             //         p.Velocity += oForce;
+    //             //         
+    //             //         _particles[j] = p;
+    //             //     }
+    //             // }
+    //             //o.Velocity += force;
+    //             
+    //             o.Velocity /= o.Mass;
+    //             o.Velocity += DT * math.float2(0, Gravity);
+    //             // 3.2: enforce boundary conditions
+    //             uint2 index = (uint2)o.Position;
+    //             int x = (int) (index.x / GridRes);
+    //             int y = (int) (index.y % GridRes);
+    //             if (x < 2 || x > GridRes - 3) o.Velocity.x = 0;
+    //             if (y < 2 || y > GridRes - 3) o.Velocity.y = 0;
+    //             
+    //             o.Position += o.Velocity * DT;
+    //             objParticles[i] = o;
+    //         }
+    //     }
+    // }
     
     #endregion
 
@@ -534,5 +651,6 @@ public class Mpm : MonoBehaviour
     {
         _particles.Dispose();
         _grid.Dispose();
+        //_objectParticle.Dispose();
     }
 }
