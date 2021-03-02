@@ -7,9 +7,10 @@ using System.Collections.Generic;
 using Unity.Burst;
 using Unity.Jobs;
 
-public class Mpm : MonoBehaviour
+public class MpmBodyCollision : MonoBehaviour
 {
-    public struct Particle {
+    public struct Particle
+    {
         public float2 Position;
         public float2 Velocity;
         public float2x2 AffMomentMatrix;
@@ -18,26 +19,27 @@ public class Mpm : MonoBehaviour
         public float2x2 fs; //deformation gradient
     }
 
-    private struct Cell {
+    private struct Cell
+    {
         public float2 Velocity;
         public float Mass;
     }
 
     private const int GridRes = 128;
     private const int NumCells = GridRes * GridRes;
-    
+
     // batch size for the job system.
     private const int Division = 16;
-    
+
     //simulation parameters
 
     //dt = the time step of the simulation. The stability of the simulation is going to be limited by how much a particle can move in a single time step
     //it's a good rule of thumb to choose dt so that no particle could move more than 1 grid-cell in a single step
     [SerializeField] private float DT = 0.005f;
     [SerializeField] private float DX = 0.33f;
-    private int Iterations => (int)(1.0f / DT);
+    private int Iterations => (int) (1.0f / DT);
     [SerializeField] private float Gravity = -0.5f;
-    
+
     // Lamé parameters for stress-strain relationship
     [SerializeField] private float ElasticLambda = 0.0001f;
     [SerializeField] private float ElasticMu = 200;
@@ -47,7 +49,7 @@ public class Mpm : MonoBehaviour
     private NativeArray<Particle> _particles;
     private NativeArray<Cell> _grid;
     private NativeArray<Particle> _objectParticle;
-    
+
 
     private float2[] _weights = new float2[3];
 
@@ -65,16 +67,16 @@ public class Mpm : MonoBehaviour
     private Particle _cubeParticle = new Particle();
     [SerializeField] private float _cubeSpeed;
     private bool _begin;
-    private Vector3 _endPos;
+    private float2 _endPos;
 
     private List<GameObject> _cubes = new List<GameObject>();
-    
+
 
     private void SimulationArea(int x, int y, int boxX = 8, int boxY = 8)
     {
         const float spacing = 1.0f;
 
-        for (float i = - boxX / 2; i < boxX / 2; i += spacing)
+        for (float i = -boxX / 2; i < boxX / 2; i += spacing)
         {
             for (float j = -boxY / 2; j < boxY / 2; j += spacing)
             {
@@ -89,13 +91,14 @@ public class Mpm : MonoBehaviour
 
     private void Start()
     {
-        _endPos = new Vector3(GridRes / 2, GridRes / 4, 0);
-        _cube.transform.position = new Vector3(GridRes / 2, GridRes / 1.3f, 0);
-        
-        
-        
+        _endPos = new float2(GridRes / 2, GridRes / 4);
+        _cubeParticle.Position = new float2(GridRes / 2, GridRes / 1.3f);
+        _cubeParticle.Velocity = _endPos - _cubeParticle.Position;
+        _cubeParticle.Mass = 2;
+
+
         // 1. initialise your grid - fill your grid array with (grid_res * grid_res) cells.
-        
+
         _grid = new NativeArray<Cell>(NumCells, Allocator.Persistent);
 
         for (int i = 0; i < NumCells; ++i)
@@ -106,10 +109,10 @@ public class Mpm : MonoBehaviour
         }
 
         // 2. create a bunch of particles. Set their positions somewhere in the simulation domain.
-        
+
         _tempPositions = new List<float2>();
         SimulationArea(GridRes / 2, GridRes / 4, GridRes / 2, GridRes / 2);
-        
+
         _numParticles = _tempPositions.Count + 1;
 
         _particles = new NativeArray<Particle>(_numParticles, Allocator.Persistent);
@@ -127,7 +130,7 @@ public class Mpm : MonoBehaviour
             //initialise deformation gradient to the identity matrix, as they're in their undeformed state
             _particles[i] = p;
         }
-        
+
         var position = new float2(GridRes / 2, GridRes);
         _particles[_numParticles - 1] = new Particle
         {
@@ -137,14 +140,14 @@ public class Mpm : MonoBehaviour
             Mass = 10.0f,
             fs = math.float2x2(1, 0, 0, 1)
         };
-        
+
         //(float2) (Math.Sqrt(Math.Pow(position.x - GridRes / 2, 2) + Math.Pow(position.y - GridRes / 2, 2))) * DT
-        
+
 
         // 3. optionally precompute state variables e.g. particle initial volume, if your model calls for it
         // -- begin precomputation of particle volumes
         //MPM course, equation 152
-        
+
         new JobParticleToGrid()
         {
             ps = _particles,
@@ -155,18 +158,18 @@ public class Mpm : MonoBehaviour
         for (int i = 0; i < _numParticles; ++i)
         {
             var p = _particles[i];
-            
+
             //quadratic interpolation weights
             //I don't know what this is actually doing in reality
-            
+
             float2 cellIdx = math.floor(p.Position);
             float2 cellDiff = (p.Position - cellIdx) - 0.5f;
-            
+
             //this calculation is what I don't understand
             _weights[0] = 0.5f * math.pow(0.5f - cellDiff, 2);
             _weights[1] = 0.75f - math.pow(cellDiff, 2);
             _weights[2] = 0.5f * math.pow(0.5f + cellDiff, 2);
-            
+
             // weights calculated for position 0, 1, and 2
             // 2D grid of weights calculated against main position
             // This is shown as:
@@ -176,7 +179,7 @@ public class Mpm : MonoBehaviour
 
             // The corresponding cells at these positions are identified and density is calculated
             // As each cell contributes to the density of the current cell using the total weight and the corresponding cell mass
-            
+
             float density = 0.0f;
 
             for (int gx = 0; gx < 3; ++gx)
@@ -184,22 +187,22 @@ public class Mpm : MonoBehaviour
                 for (int gy = 0; gy < 3; ++gy)
                 {
                     float weight = _weights[gx].x * _weights[gy].y;
-                
+
                     // map 2D to 1D index in grid
                     int cellIndex = ((int) cellIdx.x + (gx - 1)) * GridRes + ((int) cellIdx.y + gy - 1);
                     density += _grid[cellIndex].Mass * weight;
                 }
             }
-            
+
             //per-particle volume estimate has now been computed
             float volume = p.Mass / density;
             p.Volume = volume;
 
             _particles[i] = p;
         }
-        
+
         // -- end precomputation of particle volumes
-        
+
         // Create colliding particle with direction
         // _objectParticle = new NativeArray<Particle>(1, Allocator.Persistent);
         // var position = new float2(GridRes / 2, GridRes / 1.3f);
@@ -229,13 +232,14 @@ public class Mpm : MonoBehaviour
         {
             EachSimulationStep();
         }
-        
+
         RenderFrame(_particles);
     }
-    
+
     //Move the cube positions by the particle positions
     //Should check for a more performant way of handling this
-    public void RenderFrame(NativeArray<Particle> ps) {
+    public void RenderFrame(NativeArray<Particle> ps)
+    {
 
         for (int i = 0; i < ps.Length - 1; i++)
         {
@@ -244,8 +248,11 @@ public class Mpm : MonoBehaviour
         }
 
         if (!_begin) return;
-        var direction = _endPos - _cube.transform.position;
-        _cube.transform.position += direction * (DT * DX * _cubeSpeed);
+        _cubeParticle.Velocity = _endPos - _cubeParticle.Position;
+
+        _cubeParticle.Position += _cubeParticle.Velocity * (DT * DX * _cubeSpeed);
+
+        _cube.transform.position = new Vector3(_cubeParticle.Position.x, _cubeParticle.Position.y, 0);
     }
 
     private void HandleMouseInteraction()
@@ -305,6 +312,22 @@ public class Mpm : MonoBehaviour
             Gravity = Gravity
         }.Schedule(NumCells, Division).Complete();
         Profiler.EndSample();
+        
+        if (_begin)
+        {
+            // Grid-Based Collision
+            Profiler.BeginSample("Grid-Based Collision");
+            new GridBodyCollision
+            {
+                grid = _grid,
+                particle = _cubeParticle,
+                DT = DT,
+                DX = DX,
+                speed = _cubeSpeed
+            }.Schedule().Complete();
+            Profiler.EndSample();
+        }
+
 
         var position = new float2(_cube.transform.position.x, _cube.transform.position.y);
 
@@ -359,31 +382,31 @@ public class Mpm : MonoBehaviour
             for (int i = 0; i < numParticles; ++i)
             {
                 var p = ps[i];
-                
+
                 // 2.1: calculate quantities like e.g. stress based on constitutive equation
                 float2x2 stress = 0;
-                
+
                 // deformation gradient
                 var F = p.fs;
                 var J = math.determinant(F);
-                
+
                 //MPM course, page 46
                 var volume = p.Volume * J;
-                
+
                 // useful matrices for Neo-Hookean model
                 var FT = math.transpose(F);
                 var FinvT = math.inverse(FT);
                 var FminusFinvT = F - FinvT;
-                
+
                 //MPM course equation 48
                 var pTerm0 = ElasticMu * (FminusFinvT);
                 var pTerm1 = ElasticLambda * math.log(J) * FinvT;
                 var P = pTerm0 + pTerm1;
-                
+
                 // cauchy stress = (1 / det(F)) * P * FT
                 //equation 38, MPM course
                 stress = (1.0f / J) * math.mul(P, FT);
-                
+
                 // (Mp)^-1 = 4, see APIC paper and MPM course page 42
                 // this term is used in MLS-MPM paper equation 16 with quadratic weights, Mp = (1/4) * (deltaX)^2
                 //in this simulation, deltaX = 1, because i scale the rendering of the domain rather than the domain itself
@@ -391,21 +414,21 @@ public class Mpm : MonoBehaviour
                 var Mp = 0.25f * math.pow(DX, 2);
                 Mp = math.pow(Mp, -1);
                 var eq16term0 = -volume * Mp * stress * DT;
-                
+
                 // 2.2: calculate weights for the 3x3 neighbouring cells surrounding the particle's position
                 // on the grid using an interpolation function
-                
+
                 // weights calculated for position 0, 1, and 2
                 // 2D grid of weights calculated against main position
                 // This is shown as:
                 //      | 0.x * 0.y | 0.x * 1.y | 0.x * 2.y |
                 //      | 1.x * 0.y | 1.x * 1.y | 1.x * 2.y |
                 //      | 2.x * 0.y | 2.x * 1.y | 2.x * 2.y |
-            
+
                 // The corresponding cells at these positions are identified and density is calculated
                 // As each cell contributes to the density of the current cell using the total weight and the corresponding cell mass
 
-                uint2 cellIdx = (uint2)p.Position;
+                uint2 cellIdx = (uint2) p.Position;
                 float2 cellDiff = (p.Position - cellIdx) - 0.5f;
                 weights[0] = 0.5f * math.pow(0.5f - cellDiff, 2);
                 weights[1] = 0.75f - math.pow(cellDiff, 2);
@@ -421,35 +444,35 @@ public class Mpm : MonoBehaviour
                         uint2 cellX = math.uint2(cellIdx.x + gx - 1, cellIdx.y + gy - 1);
                         float2 cellDist = (cellX - p.Position) + 0.5f;
                         float2 q = math.mul(p.AffMomentMatrix, cellDist);
-                        
+
                         //converting 2D index to 1D
                         int cellIndex = (int) cellX.x * GridRes + (int) cellX.y;
                         Cell cell = grid[cellIndex];
-                        
+
                         //MPM course, equation 172
                         float massContribution = weight * p.Mass;
-                        
+
                         //scatter mass to the grid
                         cell.Mass += massContribution;
-                        
+
                         // APIC P2G momentum contribution
                         cell.Velocity += massContribution * (p.Velocity + q);
-                        
+
                         //fused force/momentum update from MLS-MPM
                         //see MLS-MPM paper, equation listed after equation 28
                         float2 momentum = math.mul(eq16term0 * weight, cellDist);
                         cell.Velocity += momentum;
-                        
+
                         //total update on cell.Velocity is now:
                         //weight * (DT * M^-1 * p.volume * p.stress + p.mass * p.AffMomentMatrix)
                         //this is the fused momentum + force from MLS-MPM. However, instead of our stress being derived from the energy density,
                         //i use the weak form with cauchy stress. converted:
                         //p.volume * (dΨ/dF)(Fp)*(Fp_transposed)
                         //is equal to p.volume * σ
-                        
+
                         //note: currently "cell.velocity" refers to MOMENTUM, not velocity!
                         //this gets converted in the UpdateGrid step below
-                        
+
                         grid[cellIndex] = cell;
                     }
                 }
@@ -467,13 +490,13 @@ public class Mpm : MonoBehaviour
         public void Execute(int index)
         {
             var cell = grid[index];
-            
+
             if (cell.Mass > 0)
             {
                 // 3.1 calculate grid velocity based on momentum found in stage 2
                 cell.Velocity /= cell.Mass;
                 cell.Velocity += DT * math.float2(0, Gravity);
-                
+
                 // 3.2: enforce boundary conditions
                 int x = index / GridRes;
                 int y = index % GridRes;
@@ -489,6 +512,7 @@ public class Mpm : MonoBehaviour
     unsafe struct JobGridToParticle : IJobParallelFor
     {
         public NativeArray<Particle> ps;
+
         //public NativeArray<Particle> os;
         [ReadOnly] public NativeArray<Cell> grid;
         [ReadOnly] public bool mouseDown;
@@ -508,7 +532,7 @@ public class Mpm : MonoBehaviour
 
             // 4.2: calculate neighbouring cell weights as in step 2.1.
             // note: our particle's haven't moved on the grid at all by this point, so the weights will be identical
-            
+
             // weights calculated for position 0, 1, and 2
             // 2D grid of weights calculated against main position
             // This is shown as:
@@ -518,7 +542,7 @@ public class Mpm : MonoBehaviour
 
             // The corresponding cells at these positions are identified and density is calculated
             // As each cell contributes to the density of the current cell using the total weight and the corresponding cell mass
-            
+
             uint2 cellIdx = (uint2) p.Position;
             float2 cellDiff = (p.Position - cellIdx) - 0.5f;
             var weights = stackalloc float2[]
@@ -565,20 +589,10 @@ public class Mpm : MonoBehaviour
             //safety clamp to ensure particles don't exit simulation domain
             p.Position = math.clamp(p.Position, 1, GridRes - 2);
 
-            var cubeDist = p.Position - cube;
-            var cubeRadius = 2f;
-            if (math.dot(cubeDist, cubeDist) < cubeRadius * cubeRadius)
-            {
-                float normFactor = (math.length(cubeDist));
-                normFactor = math.pow(math.sqrt(normFactor), 8);
-                var force = math.normalize(cubeDist) * normFactor * 0.5f;
-                p.Velocity += force;
-            }
-            
             // boundaries
             float2 x_n = p.Position + p.Velocity;
             const float wall_min = 3;
-            float wall_max = (float)GridRes - 4;
+            float wall_max = (float) GridRes - 4;
             if (x_n.x < wall_min) p.Velocity.x += wall_min - x_n.x;
             if (x_n.x > wall_max) p.Velocity.x += wall_max - x_n.x;
             if (x_n.y < wall_min) p.Velocity.y += wall_min - x_n.y;
@@ -591,6 +605,37 @@ public class Mpm : MonoBehaviour
             p.fs = math.mul(fpNew, p.fs);
 
             ps[index] = p;
+        }
+    }
+
+    [BurstCompile]
+    struct GridBodyCollision : IJob
+    {
+        public NativeArray<Cell> grid;
+        public Particle particle;
+        public float DT;
+        public float DX;
+        public float speed;
+
+        public void Execute()
+        {
+            var p = particle;
+            // p.Position += p.Velocity * (DT * DX);
+
+            uint2 cellIdx = (uint2) p.Position;
+            //converting 2D index to 1D
+            int cellIndex = (int) cellIdx.x * GridRes + (int) cellIdx.y;
+            Cell cell = grid[cellIndex];
+            cell.Velocity = p.Mass * (p.Velocity  * (DT * DX * speed));
+            grid[cellIndex] = cell;
+
+            //converting 2D index to 1D
+            cellIndex = (int) cellIdx.x * GridRes + (int) cellIdx.y - 1;
+            cell = grid[cellIndex];
+            cell.Velocity = p.Mass * (p.Velocity * (DT * DX * speed));
+            grid[cellIndex] = cell;
+
+            particle = p;
         }
     }
 
