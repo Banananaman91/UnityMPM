@@ -195,7 +195,7 @@ Transform:
   m_GameObject: {fileID: 107587878}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 2.66, z: 0}
-  m_LocalScale: {x: 2, y: 2, z: 2}
+  m_LocalScale: {x: 235.33, y: 10, z: 30}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 2
@@ -526,7 +526,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
   m_LocalRotation: {x: -0.004500218, y: 0.0014992673, z: 0.0000067636065, w: 0.9999888}
-  m_LocalPosition: {x: 63.3644, y: 60.3539, z: -118.91136}
+  m_LocalPosition: {x: 126.2, y: 60.21, z: -135.42}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -578,12 +578,16 @@ MonoBehaviour:
   DT: 0.05
   DX: 1
   Gravity: -0.3
-  ElasticLambda: 0.01
-  ElasticMu: 100
+  ElasticLambda: 100
+  ElasticMu: 0.1
   _spawnCube: {fileID: 2652775751795438266, guid: a4f39104d89afae4f9dddd9ea33c2343,
     type: 3}
   _cube: {fileID: 107587878}
-  _cubeSpeed: 5
+  _cubeSpeed: 2
+  _cubeXStartPos: 2
+  _cubeYStartPos: 1.3
+  _cubeXEndPos: 2
+  _cubeYEndPos: 30
 --- !u!4 &1700888075
 Transform:
   m_ObjectHideFlags: 0
