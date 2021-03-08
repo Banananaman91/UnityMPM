@@ -25,8 +25,8 @@ public class MpmBodyCollision : MonoBehaviour
         public float Mass;
     }
 
-    private const int GridRes = 256;
-    private const int NumCells = GridRes * GridRes;
+    [SerializeField] private int GridRes = 64;
+    private int NumCells => GridRes * GridRes;
 
     // batch size for the job system.
     private const int Division = 16;
@@ -44,7 +44,7 @@ public class MpmBodyCollision : MonoBehaviour
     [SerializeField] private float ElasticLambda = 0.0001f;
     [SerializeField] private float ElasticMu = 200;
 
-    private int _numParticles;
+    public int _numParticles;
 
     private NativeArray<Particle> _particles;
     private NativeArray<Cell> _grid;
@@ -55,17 +55,11 @@ public class MpmBodyCollision : MonoBehaviour
 
     private List<float2> _tempPositions;
 
-    private SimRenderer _simRenderer;
-
-    // mouse interaction
-    private const float MouseRadius = 10f;
-    private bool _mouseDown = false;
-    private float2 _mousePos;
-
     [SerializeField] private GameObject _spawnCube;
     [SerializeField] private GameObject _cube;
-    private Particle _cubeParticle = new Particle();
-    [SerializeField] private float _cubeSpeed;
+    private Particle _cubeParticle;
+    [SerializeField] private float _cubeMass = 2;
+    [SerializeField] private float _cubeSpeed = 2;
     [SerializeField] private float _cubeXStartPos;
     [SerializeField] private float _cubeYStartPos;
     [SerializeField] private float _cubeXEndPos;
@@ -85,7 +79,7 @@ public class MpmBodyCollision : MonoBehaviour
         {
             for (float j = -boxY / 2f; j < boxY / 2f; j += spacing)
             {
-
+                
                 var pos = math.float2(x + i, y + j);
                 _tempPositions.Add(pos);
                 var go = Instantiate(_spawnCube, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
@@ -99,10 +93,9 @@ public class MpmBodyCollision : MonoBehaviour
         _endPos = new float2(GridRes / _cubeXEndPos, GridRes / _cubeYEndPos);
         _cubeParticle.Position = new float2(GridRes / _cubeXStartPos, GridRes / _cubeYStartPos);
         _cubeParticle.Velocity = _endPos - _cubeParticle.Position;
-        _cubeParticle.Mass = 2;
+        _cubeParticle.Mass = _cubeMass;
         _cube.transform.position = new Vector3(_cubeParticle.Position.x, _cubeParticle.Position.y, 0);
-
-
+        
         // 1. initialise your grid - fill your grid array with (grid_res * grid_res) cells.
 
         _grid = new NativeArray<Cell>(NumCells, Allocator.Persistent);
@@ -117,13 +110,13 @@ public class MpmBodyCollision : MonoBehaviour
         // 2. create a bunch of particles. Set their positions somewhere in the simulation domain.
 
         _tempPositions = new List<float2>();
-        SimulationArea(GridRes / 2, GridRes / 4, GridRes / 2, GridRes / 2);
+        SimulationArea(GridRes / 2, GridRes / 3, GridRes / 2, GridRes / 2);
 
-        _numParticles = _tempPositions.Count + 1;
+        _numParticles = _tempPositions.Count;
 
         _particles = new NativeArray<Particle>(_numParticles, Allocator.Persistent);
 
-        for (int i = 0; i < _numParticles - 1; ++i)
+        for (int i = 0; i < _numParticles; ++i)
         {
             var p = new Particle
             {
@@ -137,18 +130,6 @@ public class MpmBodyCollision : MonoBehaviour
             _particles[i] = p;
         }
 
-        var position = new float2(GridRes / 2, GridRes);
-        _particles[_numParticles - 1] = new Particle
-        {
-            Position = position,
-            Velocity = 0,
-            AffMomentMatrix = 0,
-            Mass = 10.0f,
-            fs = math.float2x2(1, 0, 0, 1)
-        };
-
-        //(float2) (Math.Sqrt(Math.Pow(position.x - GridRes / 2, 2) + Math.Pow(position.y - GridRes / 2, 2))) * DT
-
 
         // 3. optionally precompute state variables e.g. particle initial volume, if your model calls for it
         // -- begin precomputation of particle volumes
@@ -158,7 +139,12 @@ public class MpmBodyCollision : MonoBehaviour
         {
             ps = _particles,
             grid = _grid,
-            numParticles = _numParticles
+            numParticles = _numParticles,
+            ElasticLambda = ElasticLambda,
+            ElasticMu = ElasticMu,
+            DT = DT,
+            DX = DX,
+            GridRes = GridRes
         }.Schedule().Complete();
 
         for (int i = 0; i < _numParticles; ++i)
@@ -247,7 +233,7 @@ public class MpmBodyCollision : MonoBehaviour
     public void RenderFrame(NativeArray<Particle> ps)
     {
 
-        for (int i = 0; i < ps.Length - 1; i++)
+        for (int i = 0; i < ps.Length; i++)
         {
             var parPos = ps[i].Position;
             _cubes[i].transform.position = new Vector3(parPos.x, parPos.y, 0);
@@ -261,30 +247,8 @@ public class MpmBodyCollision : MonoBehaviour
         _cube.transform.position = new Vector3(_cubeParticle.Position.x, _cubeParticle.Position.y, 0);
     }
 
-    private void HandleMouseInteraction()
-    {
-        _mouseDown = false;
-        if (Input.GetMouseButton(0))
-        {
-            _mouseDown = true;
-            var mp = Camera.main.ScreenToViewportPoint(Input.mousePosition);
-            _mousePos = math.float2(mp.x * GridRes, mp.y * GridRes);
-        }
-    }
-
     private void EachSimulationStep()
     {
-        // Profiler.BeginSample("Move Object");
-        // new ObjectMover()
-        // {
-        //     objParticles = _objectParticle,
-        //     DT = DT,
-        //     DX = DX,
-        //     Gravity = Gravity,
-        //     _particles = _particles
-        // }.Schedule().Complete();
-        // Profiler.EndSample();
-
         // 1. reset grid completely
         Profiler.BeginSample("Clear Grid");
         new JobClearGrid()
@@ -304,8 +268,8 @@ public class MpmBodyCollision : MonoBehaviour
             ElasticLambda = ElasticLambda,
             ElasticMu = ElasticMu,
             DT = DT,
-            DX = DX
-
+            DX = DX,
+            GridRes = GridRes
         }.Schedule().Complete();
         Profiler.EndSample();
 
@@ -315,7 +279,8 @@ public class MpmBodyCollision : MonoBehaviour
         {
             grid = _grid,
             DT = DT,
-            Gravity = Gravity
+            Gravity = Gravity,
+            GridRes = GridRes
         }.Schedule(NumCells, Division).Complete();
         Profiler.EndSample();
         
@@ -331,13 +296,12 @@ public class MpmBodyCollision : MonoBehaviour
                 DX = DX,
                 speed = _cubeSpeed,
                 endPos = _endPos,
-                scale = _cubeScale / 2
+                scale = _cubeScale / 2,
+                GridRes = GridRes
             }.Schedule().Complete();
             Profiler.EndSample();
         }
-
-
-        var position = new float2(_cube.transform.position.x, _cube.transform.position.y);
+        
 
         // 4. grid-to-particle
         // goal: report our grid's findings back to our particles, and integrate their position + velocity forward
@@ -345,12 +309,9 @@ public class MpmBodyCollision : MonoBehaviour
         new JobGridToParticle()
         {
             ps = _particles,
-            mouseDown = _mouseDown,
-            mousePos = _mousePos,
             grid = _grid,
-            cube = position,
             DT = DT,
-            //os = _objectParticle
+            GridRes = GridRes
         }.Schedule(_numParticles, Division).Complete();
         Profiler.EndSample();
     }
@@ -383,6 +344,7 @@ public class MpmBodyCollision : MonoBehaviour
         public float ElasticMu;
         public float DT;
         public float DX;
+        public int GridRes;
 
         public void Execute()
         {
@@ -494,6 +456,7 @@ public class MpmBodyCollision : MonoBehaviour
         public NativeArray<Cell> grid;
         public float DT;
         public float Gravity;
+        public int GridRes;
 
         public void Execute(int index)
         {
@@ -523,10 +486,8 @@ public class MpmBodyCollision : MonoBehaviour
 
         //public NativeArray<Particle> os;
         [ReadOnly] public NativeArray<Cell> grid;
-        [ReadOnly] public bool mouseDown;
-        [ReadOnly] public float2 mousePos;
-        public float2 cube;
         public float DT;
+        public int GridRes;
 
         public void Execute(int index)
         {
@@ -626,6 +587,7 @@ public class MpmBodyCollision : MonoBehaviour
         public float DT;
         public float DX;
         public float speed;
+        public int GridRes;
 
         public void Execute()
         {
@@ -658,6 +620,7 @@ public class MpmBodyCollision : MonoBehaviour
 
                     //converting 2D index to 1D
                     cellIndex = (int) (cellIdx.x + x) * GridRes + (int) (cellIdx.y + y);
+                    if (cellIndex >= grid.Length || cellIndex < 0) continue;
                     cell = grid[cellIndex];
                     cell.Velocity = p.Mass * (p.Velocity * ((DT / DX) * speed));
                     grid[cellIndex] = cell;
