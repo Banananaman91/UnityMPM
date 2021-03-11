@@ -603,6 +603,7 @@ public class MpmBodyCollision : MonoBehaviour
                     uint2 cellIdx = (uint2) boundPos;
                     //converting 2D index to 1D
                     int cellIndex = (int) cellIdx.x * GridRes + (int) cellIdx.y;
+                    if (cellIndex >= grid.Length || cellIndex < 0) continue;
                     Cell cell = grid[cellIndex];
                     cell.Velocity = p.Mass * (p.Velocity  * ((DT / DX) * speed));
                     grid[cellIndex] = cell;
