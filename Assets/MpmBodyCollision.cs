@@ -102,8 +102,7 @@ public class MpmBodyCollision : MonoBehaviour
 
         for (int i = 0; i < NumCells; ++i)
         {
-            var cell = new Cell();
-            cell.Velocity = 0;
+            var cell = new Cell { Velocity = 0 };
             _grid[i] = cell;
         }
 
@@ -194,25 +193,6 @@ public class MpmBodyCollision : MonoBehaviour
         }
 
         // -- end precomputation of particle volumes
-
-        // Create colliding particle with direction
-        // _objectParticle = new NativeArray<Particle>(1, Allocator.Persistent);
-        // var position = new float2(GridRes / 2, GridRes / 1.3f);
-        // _objectParticle[0] = new Particle
-        // {
-        //     Position = position,
-        //     Velocity = (float2) (Math.Sqrt(Math.Pow(position.x - GridRes / 2, 2) +
-        //                                    Math.Pow(position.y - GridRes / 2, 2))) * DT,
-        //     AffMomentMatrix = 0,
-        //     Mass = 1.0f,
-        //     fs = math.float2x2(1, 0, 0, 1)
-        // };
-
-        //simulation render, replace to use the data elsewhere
-        // _simRenderer = FindObjectOfType<SimRenderer>();
-        // _simRenderer.Initialise(_numParticles, Marshal.SizeOf(new Particle()));
-
-
     }
 
     private void Update()
@@ -274,8 +254,8 @@ public class MpmBodyCollision : MonoBehaviour
         Profiler.EndSample();
 
         // 3. calculate grid velocities
-        Profiler.BeginSample("Update Grid");
-        new JobUpdateGrid()
+        Profiler.BeginSample("Update Grid Velocity");
+        new JobUpdateGridVelocity()
         {
             grid = _grid,
             DT = DT,
@@ -379,7 +359,6 @@ public class MpmBodyCollision : MonoBehaviour
 
                 // (Mp)^-1 = 4, see APIC paper and MPM course page 42
                 // this term is used in MLS-MPM paper equation 16 with quadratic weights, Mp = (1/4) * (deltaX)^2
-                //in this simulation, deltaX = 1, because i scale the rendering of the domain rather than the domain itself
                 //we multiply by dt as part of the process of fusing the momentum and force update for MLS-MPM
                 var Mp = 0.25f * math.pow(DX, 2);
                 Mp = math.pow(Mp, -1);
@@ -451,7 +430,7 @@ public class MpmBodyCollision : MonoBehaviour
     }
 
     [BurstCompile]
-    struct JobUpdateGrid : IJobParallelFor
+    struct JobUpdateGridVelocity : IJobParallelFor
     {
         public NativeArray<Cell> grid;
         public float DT;
