@@ -11,6 +11,8 @@ of a solid material impact.
 - ![Grid to Particle calculation](https://github.com/Banananaman91/UnityMPM/blob/4ddfd7f5767691db6bc5d9a7bc46c2d83b3c1dbc/Assets/MpmBodyCollision.cs#L462)
 - ![Particle velocity correction at boundary](https://github.com/Banananaman91/UnityMPM/blob/4ddfd7f5767691db6bc5d9a7bc46c2d83b3c1dbc/Assets/MpmBodyCollision.cs#L540)
 
+![](https://github.com/Banananaman91/UnityMPM/blob/main/128cubeMass16.gif)
+
 ## Information for analyising performance data
 All scenes in the DataStudy folder are setup for analysing the performance impacts of MPM, with focuses on Particle Counts, DX and DT applications.
 
