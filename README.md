@@ -1,7 +1,15 @@
-# UnityMPM
+# UnityMPM Material Point Method for Solid Physics Simulation
 A simple implementation of MPM in Unity. This is intended to analyse the performance of MPM in real time,
 breaking down components of the method to view performance impacts for each study, as well as see the visual results
 of a solid material impact.
+
+# Features
+- ![Grid-Based collision detection](https://github.com/Banananaman91/UnityMPM/blob/4ddfd7f5767691db6bc5d9a7bc46c2d83b3c1dbc/Assets/MpmBodyCollision.cs#L560)
+- ![DeltaX Stress term](https://github.com/Banananaman91/UnityMPM/blob/4ddfd7f5767691db6bc5d9a7bc46c2d83b3c1dbc/Assets/MpmBodyCollision.cs#L360)
+- ![Particle to Grid calculation](https://github.com/Banananaman91/UnityMPM/blob/4ddfd7f5767691db6bc5d9a7bc46c2d83b3c1dbc/Assets/MpmBodyCollision.cs#L318)
+- ![Grid-velocity boundary checks](https://github.com/Banananaman91/UnityMPM/blob/4ddfd7f5767691db6bc5d9a7bc46c2d83b3c1dbc/Assets/MpmBodyCollision.cs#L433)
+- ![Grid to Particle calculation](https://github.com/Banananaman91/UnityMPM/blob/4ddfd7f5767691db6bc5d9a7bc46c2d83b3c1dbc/Assets/MpmBodyCollision.cs#L462)
+- ![Particle velocity correction at boundary](https://github.com/Banananaman91/UnityMPM/blob/4ddfd7f5767691db6bc5d9a7bc46c2d83b3c1dbc/Assets/MpmBodyCollision.cs#L540)
 
 ## Information for analyising performance data
 All scenes in the DataStudy folder are setup for analysing the performance impacts of MPM, with focuses on Particle Counts, DX and DT applications.
